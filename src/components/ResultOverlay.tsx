@@ -3,6 +3,7 @@ import type { CapsuleColor } from '../lib/capsuleDome'
 import { useCapsuleSequence } from '../hooks/useCapsuleSequence'
 import { Capsule } from './Capsule'
 import { Note } from './Note'
+import { ShareCardButton } from './ShareCardButton'
 
 interface ResultOverlayProps {
   bandName: string
@@ -55,7 +56,10 @@ export function ResultOverlay({ bandName, color, onClose, onRedraw, onRevealed }
             <p className="font-ui mt-2 text-sm text-zinc-400">
               이 조합이 마음에 드시나요? 다시 뽑아서 새 이름을 받을 수도 있어요.
             </p>
-            <button type="button" onClick={onRedraw} className="select-button font-display mt-8 w-full rounded-xl py-3 text-base">
+            <div className="mt-6">
+              <ShareCardButton bandName={bandName} />
+            </div>
+            <button type="button" onClick={onRedraw} className="select-button font-display mt-3 w-full rounded-xl py-3 text-base">
               새 이름 뽑으러 가기
             </button>
           </>

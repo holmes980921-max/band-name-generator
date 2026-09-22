@@ -1,6 +1,7 @@
 import confetti from 'canvas-confetti'
 import { useCallback, useState } from 'react'
 import { useCapsuleSequence } from '../hooks/useCapsuleSequence'
+import { useWordHistory } from '../hooks/useWordHistory'
 import { getCapsuleForSide, getLaunchCapsule } from '../lib/capsuleDome'
 import { wordProvider } from '../lib/staticWordProvider'
 import type { Word } from '../lib/wordProvider'
@@ -34,7 +35,11 @@ function fireConfetti() {
 }
 
 export function VendingMachine() {
-  const [[leftWord, rightWord], setPair] = useState<[Word, Word]>(() => drawInitialPair())
+  const [initialPair] = useState<[Word, Word]>(() => drawInitialPair())
+  const leftHistory = useWordHistory(initialPair[0])
+  const rightHistory = useWordHistory(initialPair[1])
+  const leftWord = leftHistory.word
+  const rightWord = rightHistory.word
   const [confirmed, setConfirmed] = useState(false)
 
   const leftPhase = useCapsuleSequence(leftWord.id, { skipInitial: true })
@@ -57,21 +62,26 @@ export function VendingMachine() {
   const rightTarget = { x: RIGHT_TRAY_X, y: TRAY_CENTER_Y }
 
   const rerollLeft = useCallback(() => {
-    setPair(([left, right]) => [wordProvider.getRandomWord({ id: left.id, category: right.category }), right])
-  }, [])
+    leftHistory.push(wordProvider.getRandomWord({ id: leftWord.id, category: rightWord.category }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftHistory.push, leftWord.id, rightWord.category])
 
   const rerollRight = useCallback(() => {
-    setPair(([left, right]) => [left, wordProvider.getRandomWord({ id: right.id, category: left.category })])
-  }, [])
+    rightHistory.push(wordProvider.getRandomWord({ id: rightWord.id, category: leftWord.category }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rightHistory.push, rightWord.id, leftWord.category])
 
   const handleConfirm = useCallback(() => {
     setConfirmed(true)
   }, [])
 
   const handleRedraw = useCallback(() => {
-    setPair(drawInitialPair())
+    const [newLeft, newRight] = drawInitialPair()
+    leftHistory.reset(newLeft)
+    rightHistory.reset(newRight)
     setConfirmed(false)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftHistory.reset, rightHistory.reset])
 
   const bandName = `${leftWord.text} × ${rightWord.text}`
 
@@ -114,28 +124,53 @@ export function VendingMachine() {
           </div>
         </div>
 
-        {/* 뽑기 버튼: 디스플레이와 분리된, 실제 자판기 버튼 위치 */}
+        {/* 뽑기 버튼: 디스플레이와 분리된, 실제 자판기 버튼 위치. 각 쪽마다
+            바로 옆에 되돌리기 버튼을 둬서 좌/우가 독립적으로 되돌아갈 수 있다. */}
         <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={rerollLeft}
-            disabled={leftSpinning}
-            className="vending-button flex flex-1 items-center justify-center gap-1.5 text-xs sm:text-sm"
-            aria-label="왼쪽 단어 다시 뽑기"
-          >
-            <RerollIcon />
-            왼쪽 뽑기
-          </button>
-          <button
-            type="button"
-            onClick={rerollRight}
-            disabled={rightSpinning}
-            className="vending-button flex flex-1 items-center justify-center gap-1.5 text-xs sm:text-sm"
-            aria-label="오른쪽 단어 다시 뽑기"
-          >
-            <RerollIcon />
-            오른쪽 뽑기
-          </button>
+          <div className="flex flex-1 items-center gap-2">
+            <button
+              type="button"
+              onClick={rerollLeft}
+              disabled={leftSpinning}
+              className="vending-button flex flex-1 items-center justify-center gap-1.5 text-xs sm:text-sm"
+              aria-label="왼쪽 단어 다시 뽑기"
+            >
+              <RerollIcon />
+              왼쪽 뽑기
+            </button>
+            <button
+              type="button"
+              onClick={leftHistory.undo}
+              disabled={!leftHistory.canUndo || leftSpinning}
+              className="ghost-icon-button"
+              aria-label="왼쪽 단어 되돌리기"
+              title="이전 단어로 되돌리기"
+            >
+              <UndoIcon />
+            </button>
+          </div>
+          <div className="flex flex-1 items-center gap-2">
+            <button
+              type="button"
+              onClick={rerollRight}
+              disabled={rightSpinning}
+              className="vending-button flex flex-1 items-center justify-center gap-1.5 text-xs sm:text-sm"
+              aria-label="오른쪽 단어 다시 뽑기"
+            >
+              <RerollIcon />
+              오른쪽 뽑기
+            </button>
+            <button
+              type="button"
+              onClick={rightHistory.undo}
+              disabled={!rightHistory.canUndo || rightSpinning}
+              className="ghost-icon-button"
+              aria-label="오른쪽 단어 되돌리기"
+              title="이전 단어로 되돌리기"
+            >
+              <UndoIcon />
+            </button>
+          </div>
         </div>
 
         {/* vent decoration */}
@@ -182,6 +217,25 @@ function RerollIcon() {
       <polyline points="23 4 23 10 17 10" />
       <polyline points="1 20 1 14 7 14" />
       <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  )
+}
+
+function UndoIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
     </svg>
   )
 }
