@@ -1,0 +1,684 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Black Han Sans", sans-serif;
+  --font-ui: "Gothic A1", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  background: #0b0c10;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* metal cabinet shell */
+.machine-shell {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 22%),
+    #202127;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 30px 60px -20px rgba(0, 0, 0, 0.7);
+}
+
+/* recessed glass window that holds the word slots */
+.machine-glass {
+  background: #0a0b0e;
+  box-shadow:
+    inset 0 10px 24px rgba(0, 0, 0, 0.75),
+    inset 0 -6px 16px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* thin vent slits for authenticity */
+.machine-vents {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 0px,
+    rgba(255, 255, 255, 0.06) 2px,
+    transparent 2px,
+    transparent 10px
+  );
+}
+
+.vending-button {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  color: #1a1206;
+  background: linear-gradient(180deg, #ffc451 0%, #ffa724 55%, #e88a10 100%);
+  border-radius: 9999px;
+  padding: 0.65rem 1.4rem;
+  box-shadow:
+    0 4px 0 #9a5c05,
+    0 8px 14px rgba(0, 0, 0, 0.45);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+}
+
+.vending-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.vending-button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 #9a5c05,
+    0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+.vending-button:disabled {
+  filter: grayscale(0.3) brightness(0.85);
+  cursor: not-allowed;
+}
+
+.select-button {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #ffcd6b 0%, #ffa724 45%, #e07c00 100%);
+  color: #1a1206;
+  box-shadow:
+    0 6px 0 #8a5203,
+    0 14px 26px -6px rgba(255, 167, 36, 0.55);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+}
+
+.select-button:hover {
+  filter: brightness(1.05);
+}
+
+.select-button:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 2px 0 #8a5203,
+    0 6px 14px -4px rgba(255, 167, 36, 0.45);
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.indicator-dot {
+  animation: glow-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* ---- capsule vending animation ---- */
+
+/* capsule-stage는 이제 machine-glass 전체 좌표계에서 스스로의 위치(left/top)를
+   갖는다 — 돔 안 그 캡슐의 자리(origin)에서 트레이 자리(target)까지 실제로
+   옮겨가는 것처럼 보이기 위함이다. 음수 margin으로 자기 중심을 그 좌표에
+   맞추고, translate/rotate/scale은 그 안에서 벌어지는 통통 튀는 물리
+   애니메이션 전용으로 남겨둔다(서로 다른 속성이라 충돌하지 않는다). */
+.capsule-stage {
+  position: absolute;
+  left: var(--target-x, 50%);
+  top: var(--target-y, 50%);
+  width: calc(64px * var(--capsule-unit, 1));
+  height: calc(64px * var(--capsule-unit, 1));
+  margin: calc(-32px * var(--capsule-unit, 1)) 0 0 calc(-32px * var(--capsule-unit, 1));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.capsule-stage[data-phase='bounce'],
+.capsule-stage[data-phase='opening'],
+.capsule-stage[data-phase='unfolding'] {
+  opacity: 1;
+}
+
+/* 장식적인 "물리감" 애니메이션은 모션을 허용하는 환경에서만 재생한다. */
+@media (prefers-reduced-motion: no-preference) {
+  .capsule-stage[data-phase='ejecting'] {
+    opacity: 1;
+    left: var(--origin-x);
+    top: var(--origin-y);
+    animation: capsule-eject-path 520ms cubic-bezier(0.32, 0.06, 0.4, 0.98) forwards;
+  }
+
+  /* 돔 안 그 자리 -> 통로(중간 지점에서 살짝 작아짐) -> 트레이 자리, 순서로 실제 이동한다 */
+  @keyframes capsule-eject-path {
+    0% {
+      left: var(--origin-x);
+      top: var(--origin-y);
+    }
+    55% {
+      left: calc((var(--origin-x) + var(--target-x)) / 2);
+      top: calc((var(--origin-y) + var(--target-y)) / 2 + 4%);
+    }
+    100% {
+      left: var(--target-x);
+      top: var(--target-y);
+    }
+  }
+
+  .capsule-body {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    scale: 0.7;
+    opacity: 0;
+  }
+
+  .capsule-stage[data-phase='bounce'] .capsule-body,
+  .capsule-stage[data-phase='opening'] .capsule-body,
+  .capsule-stage[data-phase='unfolding'] .capsule-body {
+    scale: 1;
+    opacity: 1;
+    rotate: var(--roll-rotation, 420deg);
+  }
+
+  .capsule-stage[data-phase='ejecting'] .capsule-body {
+    animation: capsule-tumble 520ms cubic-bezier(0.3, 0.1, 0.3, 1) forwards;
+  }
+
+  .capsule-stage[data-phase='bounce'] .capsule-body {
+    animation: capsule-bounce 320ms cubic-bezier(0.33, 0, 0.4, 1) forwards;
+  }
+
+  /* 통로를 지나가며 회전하는 몸체 — 회전량은 실제 이동 거리에 비례한다(--roll-rotation) */
+  @keyframes capsule-tumble {
+    0% {
+      scale: 0.7;
+      opacity: 0;
+      rotate: 0deg;
+    }
+    15% {
+      opacity: 1;
+      rotate: calc(var(--roll-rotation, 420deg) * 0.15);
+    }
+    55% {
+      scale: 0.82;
+      opacity: 0.88;
+      rotate: calc(var(--roll-rotation, 420deg) * 0.6);
+    }
+    100% {
+      scale: 1;
+      opacity: 1;
+      rotate: var(--roll-rotation, 420deg);
+    }
+  }
+
+  /* 바닥에 떨어져 몇 번 튕기며 감속한다 (rotate는 body 기본 규칙이 고정해 둔 값을 그대로 유지) */
+  @keyframes capsule-bounce {
+    0% {
+      translate: 0 0;
+    }
+    18% {
+      translate: 0 calc(-11px * var(--capsule-unit, 1));
+    }
+    34% {
+      translate: 0 calc(6px * var(--capsule-unit, 1));
+    }
+    50% {
+      translate: 0 calc(-6px * var(--capsule-unit, 1));
+    }
+    66% {
+      translate: 0 calc(3px * var(--capsule-unit, 1));
+    }
+    82% {
+      translate: 0 calc(-2px * var(--capsule-unit, 1));
+    }
+    100% {
+      translate: 0 0;
+    }
+  }
+
+  .capsule-half {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    box-sizing: border-box;
+  }
+
+  .capsule-half-top {
+    top: 0;
+    z-index: 2;
+    border-radius: 999px 999px 0 0;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-bottom: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.5));
+  }
+
+  .capsule-half-bottom {
+    bottom: 0;
+    z-index: 1;
+    border-radius: 0 0 999px 999px;
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-top: none;
+    /* 하드코딩된 색을 쓰지 않는다 — 항상 뽑힌 캡슐의 color prop(팔레트)에서 온다 */
+    background: linear-gradient(180deg, var(--capsule-mid, #ffc451), var(--capsule-dark, #e07c00));
+  }
+
+  .capsule-shine {
+    position: absolute;
+    top: calc(8px * var(--capsule-unit, 1));
+    left: calc(12px * var(--capsule-unit, 1));
+    width: calc(12px * var(--capsule-unit, 1));
+    height: calc(7px * var(--capsule-unit, 1));
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    z-index: 2;
+  }
+
+  .capsule-stage[data-phase='opening'] .capsule-half-top {
+    animation: capsule-open-top 240ms ease-out forwards;
+  }
+
+  .capsule-stage[data-phase='opening'] .capsule-half-bottom {
+    animation: capsule-open-bottom 240ms ease-out forwards;
+  }
+
+  .capsule-stage[data-phase='unfolding'] .capsule-half-top {
+    translate: calc(-8px * var(--capsule-unit, 1)) calc(-20px * var(--capsule-unit, 1));
+    rotate: -35deg;
+  }
+
+  .capsule-stage[data-phase='unfolding'] .capsule-half-bottom {
+    translate: calc(8px * var(--capsule-unit, 1)) calc(20px * var(--capsule-unit, 1));
+    rotate: 35deg;
+  }
+
+  @keyframes capsule-open-top {
+    0% {
+      translate: 0 0;
+      rotate: 0deg;
+    }
+    100% {
+      translate: calc(-8px * var(--capsule-unit, 1)) calc(-20px * var(--capsule-unit, 1));
+      rotate: -35deg;
+    }
+  }
+
+  @keyframes capsule-open-bottom {
+    0% {
+      translate: 0 0;
+      rotate: 0deg;
+    }
+    100% {
+      translate: calc(8px * var(--capsule-unit, 1)) calc(20px * var(--capsule-unit, 1));
+      rotate: 35deg;
+    }
+  }
+
+}
+
+/* ---- note: 캡슐 밖으로 나온, 접혔다 펼쳐지는 쪽지. 더 이상 전광판이 없으므로
+   이 쪽지가 펼쳐진 상태 그 자체가 "평소 단어 표시"를 겸한다. ---- */
+
+.note-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.note-paper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(70px * var(--capsule-unit, 1));
+  max-width: 92%;
+  padding: calc(10px * var(--capsule-unit, 1)) calc(16px * var(--capsule-unit, 1));
+  /* 살짝 불규칙한(찢어낸) 종이 가장자리 */
+  clip-path: polygon(
+    2% 4%, 18% 0%, 35% 3%, 53% 0%, 70% 3%, 88% 0%, 98% 5%,
+    100% 22%, 97% 40%, 100% 58%, 98% 76%, 100% 92%,
+    88% 100%, 70% 97%, 52% 100%, 33% 97%, 15% 100%, 3% 95%,
+    0% 78%, 3% 60%, 0% 42%, 3% 24%, 0% 10%
+  );
+  background-image:
+    repeating-linear-gradient(115deg, rgba(0, 0, 0, 0.025) 0px, rgba(0, 0, 0, 0.025) 1px, transparent 1px, transparent 3px),
+    linear-gradient(155deg, #fffdf7 0%, #fbf3df 55%, #f3e6c8 100%);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  translate: 0 0;
+  scale: 1 1;
+  rotate: -0.6deg;
+  opacity: 1;
+  transform-origin: top center;
+}
+
+/* 접힌 자국: 완전히 펼쳐진 뒤에도 흔적이 남아 있다 */
+.note-paper::before {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.14) 20%, rgba(0, 0, 0, 0.14) 80%, transparent);
+  pointer-events: none;
+}
+.note-paper::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  bottom: 10%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.09) 25%, rgba(0, 0, 0, 0.09) 75%, transparent);
+  pointer-events: none;
+}
+
+.note-word {
+  position: relative;
+  font-family: var(--font-display);
+  font-size: calc(19px * var(--capsule-unit, 1));
+  line-height: 1.15;
+  color: #1a1206;
+  text-align: center;
+}
+
+/* 캡슐이 이동/개봉 중일 때는 쪽지가 아직 안에 있으므로 숨긴다 (모션 여부와 무관하게 적용) */
+.note-stage[data-phase='shaking'] .note-paper,
+.note-stage[data-phase='selecting'] .note-paper,
+.note-stage[data-phase='ejecting'] .note-paper,
+.note-stage[data-phase='bounce'] .note-paper,
+.note-stage[data-phase='opening'] .note-paper {
+  scale: 1 0.08;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .note-stage[data-phase='unfolding'] .note-paper {
+    animation: note-unfold 300ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  @keyframes note-unfold {
+    0% {
+      translate: 0 calc(4px * var(--capsule-unit, 1));
+      scale: 1 0.08;
+      rotate: -2deg;
+      opacity: 0;
+    }
+    40% {
+      opacity: 1;
+    }
+    100% {
+      translate: 0 0;
+      scale: 1 1;
+      rotate: -0.6deg;
+      opacity: 1;
+    }
+  }
+
+  .note-stage[data-phase='unfolding'] .note-word {
+    animation: note-word-in 200ms cubic-bezier(0.3, 1.4, 0.4, 1) 140ms both;
+  }
+
+  @keyframes note-word-in {
+    0% {
+      opacity: 0;
+      scale: 0.85;
+    }
+    70% {
+      opacity: 1;
+      scale: 1.05;
+    }
+    100% {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+}
+
+/* ---- dome: 자판기 상단에 캡슐이 가득 쌓여 있는, 좌우가 공유하는 하나의 더미 ---- */
+
+.dome-pile {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.dome-capsule {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+  /* 배경색은 항상 JS(CAPSULE_PALETTE)에서 인라인으로 주입된다 — 하드코딩 없음 */
+}
+
+.dome-capsule::after {
+  content: '';
+  position: absolute;
+  top: 32%;
+  left: 28%;
+  width: 24%;
+  height: 14%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.dome-capsule--clear {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* 앞/뒤 레이어로 깊이감을 준다 — 뒤는 작고 어둡게, 앞은 크고 선명하게.
+   (크기 자체는 JS에서 인라인 scale에 이미 곱해서 반영했다 — 인라인 스타일이
+   이 클래스보다 우선순위가 높아 여기서 scale을 또 선언해도 무시되기 때문) */
+.dome-capsule--back {
+  filter: brightness(0.74) saturate(0.85);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.dome-capsule--front {
+  filter: brightness(1.07) saturate(1.05);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.dome-fade {
+  position: absolute;
+  inset-inline: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, #0a0b0e 92%);
+}
+
+/* 캡슐이 담긴 투명 아크릴 챔버 — 캡슐이 그냥 허공에 떠 있는 게 아니라
+   이 용기 "안에" 담겨 있고, 그 바닥이 배출구(.dome-chute)로 이어진다는 것을
+   시각적으로 명확히 한다. 챔버 안쪽만 살짝 밝은 청회색 톤을 줘서, 완전히
+   불투명한 아래쪽 기계 몸통과 구분되는 "투명한 통"처럼 보이게 한다. */
+.dome-chamber {
+  position: absolute;
+  inset: 7px 7px 0 7px;
+  z-index: 3;
+  pointer-events: none;
+  border: 1.5px solid rgba(215, 225, 240, 0.28);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.09) 0%, rgba(150, 170, 200, 0.05) 32%, transparent 62%),
+    linear-gradient(180deg, rgba(80, 95, 120, 0.14) 0%, rgba(20, 24, 32, 0.02) 75%);
+  box-shadow:
+    inset 0 0 24px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* 돔 안쪽의 유리 반사광 — "이건 투명한 아크릴이다"를 확실히 보여주는 대각선 하이라이트 */
+.dome-sheen {
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(112deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 16%, transparent 30%);
+}
+
+/* 돔 바닥의 배출구 두 개 — 챔버에서 트레이로 이어지는 좁은 통로(깔때기)처럼
+   위가 넓고 아래가 좁은 모양을 준다. 캡슐 하나가 지나갈 수 있는 크기로 작게.
+   앰버 톤 테두리를 줘서 검은 배경에서도 "여기가 출구"라는 게 뚜렷이 보이게 한다. */
+.dome-chute {
+  position: absolute;
+  bottom: 0;
+  width: 32px;
+  height: 17px;
+  clip-path: polygon(8% 0%, 92% 0%, 66% 100%, 34% 100%);
+  background: linear-gradient(180deg, #23180a 0%, #05060a 75%);
+  border: 1.5px solid rgba(255, 190, 110, 0.5);
+  border-bottom: none;
+  box-shadow:
+    inset 0 3px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(255, 176, 32, 0.15);
+  z-index: 2;
+}
+.dome-chute--left {
+  left: 25%;
+  translate: -50% 0;
+}
+.dome-chute--right {
+  left: 75%;
+  translate: -50% 0;
+}
+
+/* 돔(캡슐 보관 공간)과 트레이(배출구 아래)를 물리적으로 잇는 이음매 — 리벳 장식 포함 */
+.dome-seam {
+  height: 6px;
+  z-index: 3;
+  background-image:
+    radial-gradient(circle, rgba(0, 0, 0, 0.55) 32%, transparent 33%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.35));
+  background-size: 26px 100%, 100% 100%;
+  background-position: 13px center, 0 0;
+  background-repeat: repeat-x, no-repeat;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 배출 트레이 위쪽의 얇은 선반 하이라이트 — 쪽지가 놓이는 자리를 암시 */
+.output-window::before {
+  content: '';
+  position: absolute;
+  inset-inline: 10%;
+  top: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12) 40%, rgba(255, 255, 255, 0.12) 60%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dome-capsule {
+    animation-name: dome-idle;
+    animation-duration: var(--dome-duration, 4.5s);
+    animation-delay: var(--dome-delay, 0s);
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+
+  @keyframes dome-idle {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: 1.5px -1.5px;
+    }
+  }
+
+  /* 버튼을 누른 순간, 더미 전체가 짧게 흔들린다 — 그 다음에야 특정 캡슐이 선택된다 */
+  .dome-pile--shaking {
+    animation: dome-shake 200ms ease-in-out;
+  }
+
+  @keyframes dome-shake {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    20% {
+      translate: -3px 1px;
+    }
+    40% {
+      translate: 3px -2px;
+    }
+    60% {
+      translate: -2px 2px;
+    }
+    80% {
+      translate: 2px -1px;
+    }
+  }
+
+  .dome-capsule--launch {
+    animation:
+      dome-select 180ms ease-out forwards,
+      dome-launch-out 200ms ease-in 180ms forwards;
+    z-index: 3;
+  }
+
+  @keyframes dome-select {
+    0% {
+      filter: brightness(1);
+    }
+    50% {
+      filter: brightness(1.6);
+      box-shadow: 0 0 0 3px rgba(255, 200, 90, 0.55);
+    }
+    100% {
+      filter: brightness(1.3);
+      box-shadow: 0 0 0 2px rgba(255, 200, 90, 0.4);
+    }
+  }
+
+  @keyframes dome-launch-out {
+    0% {
+      scale: 1;
+      opacity: 1;
+    }
+    100% {
+      scale: 0.4;
+      opacity: 0;
+    }
+  }
+
+  .dome-capsule--jostle {
+    animation: dome-jostle 260ms ease-out;
+  }
+
+  @keyframes dome-jostle {
+    0% {
+      translate: 0 0;
+    }
+    30% {
+      translate: 2.5px 1.5px;
+    }
+    60% {
+      translate: -1.5px -1px;
+    }
+    100% {
+      translate: 0 0;
+    }
+  }
+}
